@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Vías con novedades - ECU 911</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+body { font-family: Arial, sans-serif; margin: 20px; background: #f4f6f9; color: #333; }
+h2 { text-align: center; color: #004085; margin-bottom: 10px; }
+#fecha { text-align: center; margin-bottom: 20px; color: #6c757d; }
+.filtros { text-align: center; margin-bottom: 15px; }
+select { padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; }
+#contador { text-align: center; font-weight: bold; margin: 10px 0; color: #495057; }
+.tabla-container { overflow-x: auto; background: white; border-radius: 8px; padding: 10px; margin-top: 20px; }
+table { width: 100%; border-collapse: collapse; min-width: 600px; }
+thead { background-color: #007bff; color: white; }
+th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+tr:nth-child(even) { background-color: #f2f2f2; }
+tr:hover { background-color: #e9ecef; }
+.estado-cerrada { color: #b02a37; font-weight: bold; }
+.estado-parcial { color: #fd7e14; font-weight: bold; }
+.estado-restriccion { color: #198754; font-weight: bold; }
+#mapa { height: 500px; margin: 20px auto; max-width: 900px; border-radius: 8px; }
+
+/* Leyenda */
+.info.legend {
+  background: white;
+  padding: 8px 12px;
+  border-radius: 8px;
+  line-height: 1.5em;
+  box-shadow: 0 0 10px rgba(0,0,0,0.2);
+  font-size: 14px;
+  color: #333;
+}
+.info.legend p { margin: 0; }
+</style>
+</head>
+<body>
+
+<h2>Vías que presentan novedades en Ecuador</h2>
+<h3 id="fecha"></h3>
+
+<div class="filtros">
+  <label for="selectorEstado">Filtrar por estado: </label>
+  <select id="selectorEstado">
+    <option value="TODAS" selected>Todas</option>
+  </select>
+</div>
+
+<div id="mapa"></div>
+
+<p id="contador"></p>
+
+<div class="tabla-container">
+  <table id="tablaVias">
+    <thead>
+      <tr>
+        <th>Provincia</th>
+        <th>Vía</th>
+        <th>Estado</th>
+        <th>Observaciones</th>
+        <th>Vía Alterna</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td colspan="5" style="text-align:center;">Cargando datos...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+let todasLasVias = [];
+
+const provinciasMapa = {
+  "PICHINCHA":[0.1807,-78.4678],"GUAYAS":[-2.1894,-79.8891],"MANABI":[-0.9542,-80.7209],
+  "AZUAY":[-2.9006,-78.9996],"EL ORO":[-3.367,-79.948],"LOJA":[-3.9931,-79.2042],
+  "TUNGURAHUA":[-1.2228,-78.6197],"IMBABURA":[0.3666,-78.1276],"ESMERALDAS":[0.9683,-79.6699],
+  "CARCHI":[0.988,-78.276],"COTOPAXI":[-0.9006,-78.6108],"CHIMBORAZO":[-1.6684,-78.6599],
+  "BOLIVAR":[-1.5966,-79.0053],"SANTA ELENA":[-2.222,-80.858],"SUCUMBIOS":[0.111,-76.885],
+  "PASTAZA":[-1.437,-77.801],"NAPO":[-0.975,-77.810],"ORELLANA":[-0.462,-76.983],
+  "MORONA SANTIAGO":[-2.601,-78.030],"ZAMORA CHINCHIPE":[-4.066,-78.970],
+  "SANTO DOMINGO DE LOS TSACHILAS":[-0.254, -79.171]
+};
+
+function normalizarNombre(nombre){
+  return nombre.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  document.getElementById('fecha').innerText = "Última actualización: " + (new Date()).toLocaleString('es-EC');
+
+  const serviceUrl = 'https://ecu911.gob.ec/Services/WSVias/ViasWeb.php?estado=A&and:<>:EstadoActual-id=593&order=Provincia-descripcion&limit=200&start=0';
+
+  fetch(serviceUrl)
+    .then(res => res.json())
+    .then(data => {
+      todasLasVias = data?.data || data?.resultado || [];
+      const estadosUnicos = [...new Set(todasLasVias.map(v => v.EstadoActual?.nombre).filter(Boolean))];
+      const selector = document.getElementById('selectorEstado');
+      estadosUnicos.forEach(est=>{
+        let option=document.createElement('option'); 
+        option.value=est; 
+        option.textContent=est; 
+        selector.appendChild(option);
+      });
+
+      renderTabla("TODAS");
+      renderMapa("TODAS");
+
+      selector.addEventListener('change', function(){
+        renderTabla(this.value);
+        renderMapa(this.value);
+      });
+    })
+    .catch(err=>{
+      console.error('Error al cargar JSON online:', err);
+      document.querySelector('#tablaVias tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:red;">Error al cargar los datos</td></tr>';
+    });
+});
+
+function renderTabla(filtro){
+  let filas = '';
+  let vias = filtro && filtro!=="TODAS" ? todasLasVias.filter(v=>v.EstadoActual?.nombre===filtro) : todasLasVias;
+
+  if(vias.length===0){
+    filas='<tr><td colspan="5" style="text-align:center;">No existen vías en este estado</td></tr>';
+  } else {
+    vias.forEach(obj=>{
+      let provincia=obj.Provincia?.descripcion||'N/A';
+      let via=obj.descripcion||'N/A';
+      let estado=obj.EstadoActual?.nombre||'N/A';
+      let observaciones=obj.observaciones||'Sin observaciones';
+      let viasAlternas = Array.isArray(obj.DetalleViaAlterna) && obj.DetalleViaAlterna.length>0
+        ? obj.DetalleViaAlterna.map(va=>va.Via?.descripcion||'').filter(Boolean).join('<br>')
+        : 'N/A';
+
+      let clase='';
+      switch(estado.toUpperCase()){
+        case 'CERRADA': clase='estado-cerrada'; break;
+        case 'PARCIALMENTE HABILITADA': clase='estado-parcial'; break;
+        case 'HABILITADA CON RESTRICCIÓN VEHICULAR': clase='estado-restriccion'; break;
+      }
+
+      filas+=`<tr>
+        <td>${provincia}</td>
+        <td>${via}</td>
+        <td class="${clase}">${estado}</td>
+        <td>${observaciones}</td>
+        <td>${viasAlternas}</td>
+      </tr>`;
+    });
+  }
+  document.querySelector('#tablaVias tbody').innerHTML=filas;
+  document.getElementById('contador').innerText=`Resultados: ${vias.length}`;
+}
+
+function contarViasPorProvincia(vias){
+  const conteo = {};
+  vias.forEach(v=>{
+    const prov=v.Provincia?.descripcion;
+    const estado=v.EstadoActual?.nombre?.toUpperCase();
+    if(!prov || !estado) return;
+    if(!conteo[prov]) conteo[prov]={};
+    conteo[prov][estado]=(conteo[prov][estado]||0)+1;
+  });
+  return conteo;
+}
+
+let mapa=null, legend=null;
+function renderMapa(filtro="TODAS"){
+  if(!mapa){
+    mapa=L.map('mapa').setView([-1.8312,-78.1834],6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18, attribution:'© OpenStreetMap'}).addTo(mapa);
+  }
+
+  mapa.eachLayer(layer=>{
+    if(layer instanceof L.CircleMarker) mapa.removeLayer(layer);
+  });
+
+  const conteo = contarViasPorProvincia(todasLasVias);
+
+  for(const prov in conteo){
+    const coords = provinciasMapa[normalizarNombre(prov)];
+    if(!coords) continue;
+
+    if(filtro==="TODAS"){
+      const estados = [
+        {nombre:"CERRADA", color:"red", fill:"#b02a37", offset:[0,0]},
+        {nombre:"PARCIALMENTE HABILITADA", color:"orange", fill:"#fd7e14", offset:[0.15,0.15]},
+        {nombre:"HABILITADA CON RESTRICCIÓN VEHICULAR", color:"green", fill:"#198754", offset:[-0.15,-0.15]}
+      ];
+      estados.forEach(e=>{
+        if(conteo[prov][e.nombre]){
+          let [lat,lng]=coords;
+          L.circleMarker([lat+e.offset[0], lng+e.offset[1]],{
+            radius: Math.max(6, 6 + conteo[prov][e.nombre]),
+            color: e.color,
+            fillColor: e.fill,
+            fillOpacity:0.6
+          }).addTo(mapa)
+            .bindPopup(`<strong>${prov}</strong><br>${e.nombre}: ${conteo[prov][e.nombre]}`);
+        }
+      });
+    } else {
+      const estado=filtro.toUpperCase();
+      if(conteo[prov][estado]){
+        let color="blue", fill="#3399ff";
+        if(estado==="CERRADA"){ color="red"; fill="#b02a37"; }
+        else if(estado==="PARCIALMENTE HABILITADA"){ color="orange"; fill="#fd7e14"; }
+        else if(estado==="HABILITADA CON RESTRICCIÓN VEHICULAR"){ color="green"; fill="#198754"; }
+
+        L.circleMarker(coords,{
+          radius: Math.max(6, 6 + conteo[prov][estado]),
+          color: color,
+          fillColor: fill,
+          fillOpacity:0.6
+        }).addTo(mapa)
+          .bindPopup(`<strong>${prov}</strong><br>${estado}: ${conteo[prov][estado]}`);
+      }
+    }
+  }
+
+  // Actualizar la leyenda dinámicamente
+  if(legend){ legend.remove(); }
+  legend = L.control({position:'bottomright'});
+  legend.onAdd = function(map){
+    let div = L.DomUtil.create('div','info legend');
+    if(filtro==="TODAS"){
+      div.innerHTML = `
+        <p><span style="color:red;">●</span> Cerrada</p>
+        <p><span style="color:orange;">●</span> Parcialmente Habilitada</p>
+        <p><span style="color:green;">●</span> Habilitada con Restricción Vehicular</p>`;
+    } else if(filtro==="CERRADA"){
+      div.innerHTML = `<p><span style="color:red;">●</span> Cerrada</p>`;
+    } else if(filtro==="PARCIALMENTE HABILITADA"){
+      div.innerHTML = `<p><span style="color:orange;">●</span> Parcialmente Habilitada</p>`;
+    } else if(filtro==="HABILITADA CON RESTRICCIÓN VEHICULAR"){
+      div.innerHTML = `<p><span style="color:green;">●</span> Habilitada con Restricción Vehicular</p>`;
+    }
+    return div;
+  };
+  legend.addTo(mapa);
+}
+</script>
+
+</body>
+</html>
