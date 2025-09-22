@@ -16,16 +16,54 @@ h2 { text-align: center; color: #004085; margin-bottom: 10px; }
 .filtros { text-align: center; margin-bottom: 15px; }
 select { padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; }
 #contador { text-align: center; font-weight: bold; margin: 10px 0; color: #495057; }
-.tabla-container { overflow-x: auto; background: white; border-radius: 8px; padding: 10px; margin-top: 20px; }
+
+.contenedor {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+#mapa {
+  height: 600px;
+  flex: 2;
+  min-width: 300px;
+  margin: 10px;
+  border-radius: 8px;
+}
+
+#tablaObservaciones {
+  flex: 1;
+  max-width: 350px;
+  margin: 10px;
+  background: white;
+  border-radius: 8px;
+  padding: 10px;
+  overflow-x: auto;
+}
+
+#tablaObservaciones h4 {
+  margin-top: 0;
+  color: #b02a37;
+  text-align: center;
+  font-size: 16px;
+}
+
+.tabla-container {
+  overflow-x: auto;
+  background: white;
+  border-radius: 8px;
+  padding: 10px;
+  margin-top: 20px;
+}
+
 table { width: 100%; border-collapse: collapse; min-width: 600px; }
 thead { background-color: #007bff; color: white; }
-th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+th, td { border: 1px solid #ddd; padding: 6px; text-align: left; word-break: break-word; }
 tr:nth-child(even) { background-color: #f2f2f2; }
 tr:hover { background-color: #e9ecef; }
 .estado-cerrada { color: #b02a37; font-weight: bold; }
 .estado-parcial { color: #fd7e14; font-weight: bold; }
 .estado-restriccion { color: #198754; font-weight: bold; }
-#mapa { height: 600px; margin: 20px auto; max-width: 900px; border-radius: 8px; }
 
 /* Leyenda */
 .info.legend {
@@ -38,6 +76,11 @@ tr:hover { background-color: #e9ecef; }
   color: #333;
 }
 .info.legend p { margin: 0; }
+
+@media (max-width: 900px) {
+  #mapa { height: 300px; min-width: 100%; }
+  #tablaObservaciones { max-width: 100%; margin: 10px 0; }
+}
 </style>
 </head>
 <body>
@@ -52,7 +95,25 @@ tr:hover { background-color: #e9ecef; }
   </select>
 </div>
 
-<div id="mapa"></div>
+<div class="contenedor">
+  <div id="mapa"></div>
+  <div id="tablaObservaciones">
+    <h4>Vías con observaciones de “paro” o “manifestante”</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>Provincia</th>
+          <th>Vía</th>
+          <th>Estado</th>
+          <th>Observaciones</th>
+        </tr>
+      </thead>
+      <tbody id="tbodyObservaciones">
+        <tr><td colspan="4" style="text-align:center;">Cargando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
 
 <p id="contador"></p>
 
@@ -116,6 +177,7 @@ document.addEventListener('DOMContentLoaded', function(){
     .then(res => res.json())
     .then(data => {
       todasLasVias = data?.data || data?.resultado || [];
+
       const estadosUnicos = [...new Set(todasLasVias.map(v => v.EstadoActual?.nombre).filter(Boolean))];
       const selector = document.getElementById('selectorEstado');
       estadosUnicos.forEach(est=>{
@@ -127,6 +189,11 @@ document.addEventListener('DOMContentLoaded', function(){
 
       renderTabla("TODAS");
       renderMapa("TODAS");
+      renderTablaObservaciones();
+
+      // Corregir tamaño del mapa
+      setTimeout(()=>{ mapa.invalidateSize(); }, 200);
+      window.addEventListener('resize', ()=>{ mapa.invalidateSize(); });
 
       selector.addEventListener('change', function(){
         renderTabla(this.value);
@@ -173,6 +240,33 @@ function renderTabla(filtro){
   }
   document.querySelector('#tablaVias tbody').innerHTML=filas;
   document.getElementById('contador').innerText=`Resultados: ${vias.length}`;
+}
+
+function renderTablaObservaciones(){
+  let palabrasClave = ["paro","manifestante"];
+  let viasFiltradas = todasLasVias.filter(v=>{
+    let obs = (v.observaciones||"").toLowerCase();
+    return palabrasClave.some(p=>obs.includes(p));
+  });
+
+  let filas = '';
+  if(viasFiltradas.length===0){
+    filas='<tr><td colspan="4" style="text-align:center;">No existen vías con esas observaciones</td></tr>';
+  } else {
+    viasFiltradas.forEach(obj=>{
+      let provincia=obj.Provincia?.descripcion||'N/A';
+      let via=obj.descripcion||'N/A';
+      let estado=obj.EstadoActual?.nombre||'N/A';
+      let observaciones=obj.observaciones||'Sin observaciones';
+      filas+=`<tr>
+        <td>${provincia}</td>
+        <td>${via}</td>
+        <td>${estado}</td>
+        <td>${observaciones}</td>
+      </tr>`;
+    });
+  }
+  document.getElementById('tbodyObservaciones').innerHTML=filas;
 }
 
 function contarViasPorProvincia(vias){
@@ -241,16 +335,14 @@ function renderMapa(filtro="TODAS"){
     }
   }
 
-  // Actualizar la leyenda dinámicamente
   if(legend){ legend.remove(); }
   legend = L.control({position:'bottomright'});
   legend.onAdd = function(map){
     let div = L.DomUtil.create('div','info legend');
     if(filtro==="TODAS"){
-      div.innerHTML = `
-        <p><span style="color:red;">●</span> Cerrada</p>
-        <p><span style="color:orange;">●</span> Parcialmente Habilitada</p>
-        <p><span style="color:green;">●</span> Habilitada con Restricción Vehicular</p>`;
+      div.innerHTML = `<p><span style="color:red;">●</span> Cerrada</p>
+                       <p><span style="color:orange;">●</span> Parcialmente Habilitada</p>
+                       <p><span style="color:green;">●</span> Habilitada con Restricción Vehicular</p>`;
     } else if(filtro==="CERRADA"){
       div.innerHTML = `<p><span style="color:red;">●</span> Cerrada</p>`;
     } else if(filtro==="PARCIALMENTE HABILITADA"){
