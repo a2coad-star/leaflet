@@ -243,7 +243,7 @@ function renderTabla(filtro){
 }
 
 function renderTablaObservaciones(){
-  let palabrasClave = ["paro","manifestante"];
+  let palabrasClave = ["paro","manifestantes","manifestaciones"];
   let viasFiltradas = todasLasVias.filter(v=>{
     let obs = (v.observaciones||"").toLowerCase();
     return palabrasClave.some(p=>obs.includes(p));
