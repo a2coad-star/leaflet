@@ -25,15 +25,15 @@ select { padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc; font-siz
 
 #mapa {
   height: 600px;
-  flex: 2;
+  flex: 1 1 50%; /* Mitad de la pantalla */
   min-width: 300px;
   margin: 10px;
   border-radius: 8px;
 }
 
 #tablaObservaciones {
-  flex: 1;
-  max-width: 350px;
+  flex: 1 1 50%; /* Mitad de la pantalla */
+  max-width: 600px;
   margin: 10px;
   background: white;
   border-radius: 8px;
@@ -188,16 +188,15 @@ document.addEventListener('DOMContentLoaded', function(){
       });
 
       renderTabla("TODAS");
-      renderMapa("TODAS");
       renderTablaObservaciones();
+      renderMapaConParos("TODAS");
 
-      // Corregir tamaño del mapa
       setTimeout(()=>{ mapa.invalidateSize(); }, 200);
       window.addEventListener('resize', ()=>{ mapa.invalidateSize(); });
 
       selector.addEventListener('change', function(){
         renderTabla(this.value);
-        renderMapa(this.value);
+        renderMapaConParos(this.value);
       });
     })
     .catch(err=>{
@@ -282,74 +281,61 @@ function contarViasPorProvincia(vias){
 }
 
 let mapa=null, legend=null;
-function renderMapa(filtro="TODAS"){
+
+function renderMapaConParos(filtro="TODAS"){
   if(!mapa){
     mapa=L.map('mapa').setView([-1.8312,-78.1834],6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18, attribution:'© OpenStreetMap'}).addTo(mapa);
   }
 
+  // Limpiar marcadores existentes
   mapa.eachLayer(layer=>{
     if(layer instanceof L.CircleMarker) mapa.removeLayer(layer);
   });
 
-  const conteo = contarViasPorProvincia(todasLasVias);
+  const palabrasClave = ["paro","manifestantes","manifestaciones"];
+  let viasFiltradas = todasLasVias.filter(v=>{
+    let obs = (v.observaciones||"").toLowerCase();
+    return palabrasClave.some(p=>obs.includes(p));
+  });
+
+  if(filtro && filtro!=="TODAS"){
+    viasFiltradas = viasFiltradas.filter(v=>v.EstadoActual?.nombre===filtro);
+  }
+
+  const conteo = contarViasPorProvincia(viasFiltradas);
 
   for(const prov in conteo){
     const coords = provinciasMapa[normalizarNombre(prov)];
     if(!coords) continue;
 
-    if(filtro==="TODAS"){
-      const estados = [
-        {nombre:"CERRADA", color:"red", fill:"#b02a37", offset:[0,0]},
-        {nombre:"PARCIALMENTE HABILITADA", color:"orange", fill:"#fd7e14", offset:[0.15,0.15]},
-        {nombre:"HABILITADA CON RESTRICCIÓN VEHICULAR", color:"green", fill:"#198754", offset:[-0.15,-0.15]}
-      ];
-      estados.forEach(e=>{
-        if(conteo[prov][e.nombre]){
-          let [lat,lng]=coords;
-          L.circleMarker([lat+e.offset[0], lng+e.offset[1]],{
-            radius: Math.max(6, 6 + conteo[prov][e.nombre]),
-            color: e.color,
-            fillColor: e.fill,
-            fillOpacity:0.6
-          }).addTo(mapa)
-            .bindPopup(`<strong>${prov}</strong><br>${e.nombre}: ${conteo[prov][e.nombre]}`);
-        }
-      });
-    } else {
-      const estado=filtro.toUpperCase();
-      if(conteo[prov][estado]){
-        let color="blue", fill="#3399ff";
-        if(estado==="CERRADA"){ color="red"; fill="#b02a37"; }
-        else if(estado==="PARCIALMENTE HABILITADA"){ color="orange"; fill="#fd7e14"; }
-        else if(estado==="HABILITADA CON RESTRICCIÓN VEHICULAR"){ color="green"; fill="#198754"; }
+    const estados = [
+      {nombre:"CERRADA", color:"red", fill:"#b02a37", offset:[0,0]},
+      {nombre:"PARCIALMENTE HABILITADA", color:"orange", fill:"#fd7e14", offset:[0.15,0.15]},
+      {nombre:"HABILITADA CON RESTRICCIÓN VEHICULAR", color:"green", fill:"#198754", offset:[-0.15,-0.15]}
+    ];
 
-        L.circleMarker(coords,{
-          radius: Math.max(6, 6 + conteo[prov][estado]),
-          color: color,
-          fillColor: fill,
+    estados.forEach(e=>{
+      if(conteo[prov][e.nombre]){
+        let [lat,lng]=coords;
+        L.circleMarker([lat+e.offset[0], lng+e.offset[1]],{
+          radius: Math.max(6, 6 + conteo[prov][e.nombre]),
+          color: e.color,
+          fillColor: e.fill,
           fillOpacity:0.6
         }).addTo(mapa)
-          .bindPopup(`<strong>${prov}</strong><br>${estado}: ${conteo[prov][estado]}`);
+          .bindPopup(`<strong>${prov}</strong><br>${e.nombre}: ${conteo[prov][e.nombre]}`);
       }
-    }
+    });
   }
 
   if(legend){ legend.remove(); }
   legend = L.control({position:'bottomright'});
   legend.onAdd = function(map){
     let div = L.DomUtil.create('div','info legend');
-    if(filtro==="TODAS"){
-      div.innerHTML = `<p><span style="color:red;">●</span> Cerrada</p>
-                       <p><span style="color:orange;">●</span> Parcialmente Habilitada</p>
-                       <p><span style="color:green;">●</span> Habilitada con Restricción Vehicular</p>`;
-    } else if(filtro==="CERRADA"){
-      div.innerHTML = `<p><span style="color:red;">●</span> Cerrada</p>`;
-    } else if(filtro==="PARCIALMENTE HABILITADA"){
-      div.innerHTML = `<p><span style="color:orange;">●</span> Parcialmente Habilitada</p>`;
-    } else if(filtro==="HABILITADA CON RESTRICCIÓN VEHICULAR"){
-      div.innerHTML = `<p><span style="color:green;">●</span> Habilitada con Restricción Vehicular</p>`;
-    }
+    div.innerHTML = `<p><span style="color:red;">●</span> Cerrada</p>
+                     <p><span style="color:orange;">●</span> Parcialmente Habilitada</p>
+                     <p><span style="color:green;">●</span> Habilitada con Restricción Vehicular</p>`;
     return div;
   };
   legend.addTo(mapa);
