@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Vías con novedades - ECU 911</title>
+<title>Vías con paro - ECU 911</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
 <!-- Leaflet CSS -->
@@ -13,59 +13,30 @@
 body { font-family: Arial, sans-serif; margin: 20px; background: #f4f6f9; color: #333; }
 h2 { text-align: center; color: #004085; margin-bottom: 10px; }
 #fecha { text-align: center; margin-bottom: 20px; color: #6c757d; }
-.filtros { text-align: center; margin-bottom: 15px; }
-select { padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; }
-#contador { text-align: center; font-weight: bold; margin: 10px 0; color: #495057; }
-
-.contenedor {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-}
 
 #mapa {
-  height: 600px;
-  flex: 1 1 50%; /* Mitad de la pantalla */
-  min-width: 300px;
-  margin: 10px;
+  height: 80vh;
+  width: 100%;
   border-radius: 8px;
+  margin-bottom: 20px;
 }
 
-#tablaObservaciones {
-  flex: 1 1 50%; /* Mitad de la pantalla */
-  max-width: 600px;
-  margin: 10px;
+table {
+  width: 100%;
+  border-collapse: collapse;
   background: white;
   border-radius: 8px;
-  padding: 10px;
-  overflow-x: auto;
+  overflow: hidden;
 }
-
-#tablaObservaciones h4 {
-  margin-top: 0;
-  color: #b02a37;
-  text-align: center;
-  font-size: 16px;
-}
-
-.tabla-container {
-  overflow-x: auto;
-  background: white;
-  border-radius: 8px;
-  padding: 10px;
-  margin-top: 20px;
-}
-
-table { width: 100%; border-collapse: collapse; min-width: 600px; }
 thead { background-color: #007bff; color: white; }
 th, td { border: 1px solid #ddd; padding: 6px; text-align: left; word-break: break-word; }
 tr:nth-child(even) { background-color: #f2f2f2; }
 tr:hover { background-color: #e9ecef; }
+
 .estado-cerrada { color: #b02a37; font-weight: bold; }
 .estado-parcial { color: #fd7e14; font-weight: bold; }
 .estado-restriccion { color: #198754; font-weight: bold; }
 
-/* Leyenda */
 .info.legend {
   background: white;
   padding: 8px 12px;
@@ -76,46 +47,14 @@ tr:hover { background-color: #e9ecef; }
   color: #333;
 }
 .info.legend p { margin: 0; }
-
-@media (max-width: 900px) {
-  #mapa { height: 300px; min-width: 100%; }
-  #tablaObservaciones { max-width: 100%; margin: 10px 0; }
-}
 </style>
 </head>
 <body>
 
-<h2>Vías que presentan novedades en Ecuador</h2>
+<h2>Vías con paro o manifestaciones en Ecuador</h2>
 <h3 id="fecha"></h3>
 
-<div class="filtros">
-  <label for="selectorEstado">Filtrar por estado: </label>
-  <select id="selectorEstado">
-    <option value="TODAS" selected>Todas</option>
-  </select>
-</div>
-
-<div class="contenedor">
-  <div id="mapa"></div>
-  <div id="tablaObservaciones">
-    <h4>Vías con observaciones de “paro” o “manifestante”</h4>
-    <table>
-      <thead>
-        <tr>
-          <th>Provincia</th>
-          <th>Vía</th>
-          <th>Estado</th>
-          <th>Observaciones</th>
-        </tr>
-      </thead>
-      <tbody id="tbodyObservaciones">
-        <tr><td colspan="4" style="text-align:center;">Cargando...</td></tr>
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<p id="contador"></p>
+<div id="mapa"></div>
 
 <div class="tabla-container">
   <table id="tablaVias">
@@ -125,11 +64,10 @@ tr:hover { background-color: #e9ecef; }
         <th>Vía</th>
         <th>Estado</th>
         <th>Observaciones</th>
-        <th>Vía Alterna</th>
       </tr>
     </thead>
-    <tbody>
-      <tr><td colspan="5" style="text-align:center;">Cargando datos...</td></tr>
+    <tbody id="tbodyVias">
+      <tr><td colspan="4" style="text-align:center;">Cargando datos...</td></tr>
     </tbody>
   </table>
 </div>
@@ -177,118 +115,23 @@ document.addEventListener('DOMContentLoaded', function(){
     .then(res => res.json())
     .then(data => {
       todasLasVias = data?.data || data?.resultado || [];
-
-      const estadosUnicos = [...new Set(todasLasVias.map(v => v.EstadoActual?.nombre).filter(Boolean))];
-      const selector = document.getElementById('selectorEstado');
-      estadosUnicos.forEach(est=>{
-        let option=document.createElement('option'); 
-        option.value=est; 
-        option.textContent=est; 
-        selector.appendChild(option);
-      });
-
-      renderTabla("TODAS");
-      renderTablaObservaciones();
-      renderMapaConParos("TODAS");
-
-      setTimeout(()=>{ mapa.invalidateSize(); }, 200);
-      window.addEventListener('resize', ()=>{ mapa.invalidateSize(); });
-
-      selector.addEventListener('change', function(){
-        renderTabla(this.value);
-        renderMapaConParos(this.value);
-      });
+      renderMapaViasConParo();
+      renderTablaVias();
     })
     .catch(err=>{
       console.error('Error al cargar JSON online:', err);
-      document.querySelector('#tablaVias tbody').innerHTML = '<tr><td colspan="5" style="text-align:center;color:red;">Error al cargar los datos</td></tr>';
+      document.getElementById('tbodyVias').innerHTML = '<tr><td colspan="4" style="text-align:center;color:red;">Error al cargar los datos</td></tr>';
     });
 });
 
-function renderTabla(filtro){
-  let filas = '';
-  let vias = filtro && filtro!=="TODAS" ? todasLasVias.filter(v=>v.EstadoActual?.nombre===filtro) : todasLasVias;
-
-  if(vias.length===0){
-    filas='<tr><td colspan="5" style="text-align:center;">No existen vías en este estado</td></tr>';
-  } else {
-    vias.forEach(obj=>{
-      let provincia=obj.Provincia?.descripcion||'N/A';
-      let via=obj.descripcion||'N/A';
-      let estado=obj.EstadoActual?.nombre||'N/A';
-      let observaciones=obj.observaciones||'Sin observaciones';
-      let viasAlternas = Array.isArray(obj.DetalleViaAlterna) && obj.DetalleViaAlterna.length>0
-        ? obj.DetalleViaAlterna.map(va=>va.Via?.descripcion||'').filter(Boolean).join('<br>')
-        : 'N/A';
-
-      let clase='';
-      switch(estado.toUpperCase()){
-        case 'CERRADA': clase='estado-cerrada'; break;
-        case 'PARCIALMENTE HABILITADA': clase='estado-parcial'; break;
-        case 'HABILITADA CON RESTRICCIÓN VEHICULAR': clase='estado-restriccion'; break;
-      }
-
-      filas+=`<tr>
-        <td>${provincia}</td>
-        <td>${via}</td>
-        <td class="${clase}">${estado}</td>
-        <td>${observaciones}</td>
-        <td>${viasAlternas}</td>
-      </tr>`;
-    });
-  }
-  document.querySelector('#tablaVias tbody').innerHTML=filas;
-  document.getElementById('contador').innerText=`Resultados: ${vias.length}`;
-}
-
-function renderTablaObservaciones(){
-  let palabrasClave = ["paro","manifestantes","manifestaciones"];
-  let viasFiltradas = todasLasVias.filter(v=>{
-    let obs = (v.observaciones||"").toLowerCase();
-    return palabrasClave.some(p=>obs.includes(p));
-  });
-
-  let filas = '';
-  if(viasFiltradas.length===0){
-    filas='<tr><td colspan="4" style="text-align:center;">No existen vías con esas observaciones</td></tr>';
-  } else {
-    viasFiltradas.forEach(obj=>{
-      let provincia=obj.Provincia?.descripcion||'N/A';
-      let via=obj.descripcion||'N/A';
-      let estado=obj.EstadoActual?.nombre||'N/A';
-      let observaciones=obj.observaciones||'Sin observaciones';
-      filas+=`<tr>
-        <td>${provincia}</td>
-        <td>${via}</td>
-        <td>${estado}</td>
-        <td>${observaciones}</td>
-      </tr>`;
-    });
-  }
-  document.getElementById('tbodyObservaciones').innerHTML=filas;
-}
-
-function contarViasPorProvincia(vias){
-  const conteo = {};
-  vias.forEach(v=>{
-    const prov=v.Provincia?.descripcion;
-    const estado=v.EstadoActual?.nombre?.toUpperCase();
-    if(!prov || !estado) return;
-    if(!conteo[prov]) conteo[prov]={};
-    conteo[prov][estado]=(conteo[prov][estado]||0)+1;
-  });
-  return conteo;
-}
-
 let mapa=null, legend=null;
 
-function renderMapaConParos(filtro="TODAS"){
+function renderMapaViasConParo(){
   if(!mapa){
     mapa=L.map('mapa').setView([-1.8312,-78.1834],6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18, attribution:'© OpenStreetMap'}).addTo(mapa);
   }
 
-  // Limpiar marcadores existentes
   mapa.eachLayer(layer=>{
     if(layer instanceof L.CircleMarker) mapa.removeLayer(layer);
   });
@@ -299,36 +142,44 @@ function renderMapaConParos(filtro="TODAS"){
     return palabrasClave.some(p=>obs.includes(p));
   });
 
-  if(filtro && filtro!=="TODAS"){
-    viasFiltradas = viasFiltradas.filter(v=>v.EstadoActual?.nombre===filtro);
-  }
+  // Agrupar por provincia
+  const agrupado = {};
+  viasFiltradas.forEach(v=>{
+    const prov = v.Provincia?.descripcion || "N/A";
+    const estado = v.EstadoActual?.nombre?.toUpperCase() || "N/A";
+    if(!agrupado[prov]) agrupado[prov]={};
+    if(!agrupado[prov][estado]) agrupado[prov][estado]=[];
+    agrupado[prov][estado].push(v.descripcion);
+  });
 
-  const conteo = contarViasPorProvincia(viasFiltradas);
-
-  for(const prov in conteo){
+  for(const prov in agrupado){
     const coords = provinciasMapa[normalizarNombre(prov)];
     if(!coords) continue;
 
-    const estados = [
-      {nombre:"CERRADA", color:"red", fill:"#b02a37", offset:[0,0]},
-      {nombre:"PARCIALMENTE HABILITADA", color:"orange", fill:"#fd7e14", offset:[0.15,0.15]},
-      {nombre:"HABILITADA CON RESTRICCIÓN VEHICULAR", color:"green", fill:"#198754", offset:[-0.15,-0.15]}
-    ];
+    let totalVias = 0;
+    let popupContent = `<strong>Provincia:</strong> ${prov}<br>`;
+    for(const estado in agrupado[prov]){
+      const vias = agrupado[prov][estado];
+      totalVias += vias.length;
+      popupContent += `<strong>${estado}:</strong> ${vias.join(', ')}<br>`;
+    }
 
-    estados.forEach(e=>{
-      if(conteo[prov][e.nombre]){
-        let [lat,lng]=coords;
-        L.circleMarker([lat+e.offset[0], lng+e.offset[1]],{
-          radius: Math.max(6, 6 + conteo[prov][e.nombre]),
-          color: e.color,
-          fillColor: e.fill,
-          fillOpacity:0.6
-        }).addTo(mapa)
-          .bindPopup(`<strong>${prov}</strong><br>${e.nombre}: ${conteo[prov][e.nombre]}`);
-      }
-    });
+    // Color según estado más severo
+    let color="blue", fill="#3399ff";
+    if(agrupado[prov]["CERRADA"]){ color="red"; fill="#b02a37"; }
+    else if(agrupado[prov]["PARCIALMENTE HABILITADA"]){ color="orange"; fill="#fd7e14"; }
+    else if(agrupado[prov]["HABILITADA CON RESTRICCIÓN VEHICULAR"]){ color="green"; fill="#198754"; }
+
+    L.circleMarker(coords,{
+      radius: 8 + Math.min(totalVias, 15),
+      color: color,
+      fillColor: fill,
+      fillOpacity:0.7
+    }).addTo(mapa)
+      .bindPopup(popupContent);
   }
 
+  // Leyenda simple
   if(legend){ legend.remove(); }
   legend = L.control({position:'bottomright'});
   legend.onAdd = function(map){
@@ -339,6 +190,39 @@ function renderMapaConParos(filtro="TODAS"){
     return div;
   };
   legend.addTo(mapa);
+}
+
+function renderTablaVias(){
+  const palabrasClave = ["paro","manifestantes","manifestaciones"];
+  let viasFiltradas = todasLasVias.filter(v=>{
+    let obs = (v.observaciones||"").toLowerCase();
+    return palabrasClave.some(p=>obs.includes(p));
+  });
+
+  let filas = '';
+  if(viasFiltradas.length===0){
+    filas='<tr><td colspan="4" style="text-align:center;">No existen vías con paro o manifestación</td></tr>';
+  } else {
+    viasFiltradas.forEach(obj=>{
+      let provincia=obj.Provincia?.descripcion||'N/A';
+      let via=obj.descripcion||'N/A';
+      let estado=obj.EstadoActual?.nombre||'N/A';
+      let observaciones=obj.observaciones||'Sin observaciones';
+
+      let clase='';
+      if(estado.toUpperCase()==="CERRADA") clase='estado-cerrada';
+      else if(estado.toUpperCase()==="PARCIALMENTE HABILITADA") clase='estado-parcial';
+      else if(estado.toUpperCase()==="HABILITADA CON RESTRICCIÓN VEHICULAR") clase='estado-restriccion';
+
+      filas+=`<tr>
+        <td>${provincia}</td>
+        <td>${via}</td>
+        <td class="${clase}">${estado}</td>
+        <td>${observaciones}</td>
+      </tr>`;
+    });
+  }
+  document.getElementById('tbodyVias').innerHTML = filas;
 }
 </script>
 
