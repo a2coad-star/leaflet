@@ -2,148 +2,69 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Mapa — Acciones paro CONAIE por provincia (Ecuador)</title>
+  <title>Mapa Leaflet con Shapefile Ecuador</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Librería shp.js para leer shapefiles -->
+  <script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
+
   <style>
-    body, html { height: 100%; margin: 0; }
+    body, html { margin:0; padding:0; height:100%; }
     #map { height: 100vh; width: 100%; }
-    .info { padding: 6px 8px; background: white; background: rgba(255,255,255,0.9); box-shadow: 0 0 15px rgba(0,0,0,0.2); border-radius: 5px; }
-    .legend { line-height: 18px; color: #555; background: white; padding:6px; border-radius:5px;}
+    #fileInput {
+      position: absolute;
+      top: 10px; left: 10px;
+      z-index: 1000;
+      background: white; padding: 6px;
+      border-radius: 6px;
+      box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    }
   </style>
 </head>
 <body>
-<div id="map"></div>
+  <input type="file" id="fileInput" accept=".zip" />
+  <div id="map"></div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-control-geocoder/2.4.0/Control.Geocoder.min.js"></script>
-
-<script>
-  // --- 1) Datos de resumen por provincia (ajusta si quieres) ---
-  const provinciaData = {
-    "Imbabura": { marcha: true, paro: true, bloqueo: true, planton: true, score: 4 },
-    "Pichincha": { marcha: true, paro: true, bloqueo: true, planton: true, score: 4 },
-    "Bolívar": { marcha: true, paro: true, bloqueo: true, planton: true, score: 4 },
-    "Cañar": { marcha: true, paro: true, bloqueo: true, planton: true, score: 4 },
-    "Chimborazo": { marcha: true, paro: true, bloqueo: true, planton: true, score: 4 },
-    "Cotopaxi": { marcha: true, paro: true, bloqueo: false, planton: true, score: 3 },
-    "Carchi": { marcha: true, paro: true, bloqueo: false, planton: true, score: 3 },
-    "Guayas": { marcha: false, paro: true, bloqueo: true, planton: false, score: 2 },
-    "Azuay": { marcha: false, paro: true, bloqueo: true, planton: false, score: 2 }
-    // Agrega/edita provincias según necesites.
-  };
-
-  // --- 2) URL al GeoJSON de provincias de Ecuador ---
-  // Puedes reemplazar por tu propio GeoJSON (raw github, simplemaps, humdata, etc.)
-  const geojsonURL = "https://raw.githubusercontent.com/MaicolAmz/ecuador/refs/heads/main/provincias.json";
-
-  // --- 3) util: color según score ---
-  function getColor(score) {
-    return score >= 4 ? '#800026' :
-           score === 3 ? '#BD0026' :
-           score === 2 ? '#E31A1C' :
-           score === 1 ? '#FC4E2A' :
-                         '#FFEDA0';
-  }
-
-  // --- 4) Crear mapa ---
-  const map = L.map('map').setView([-1.5, -79.0], 6);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 18, attribution: '© OpenStreetMap contributors'
-  }).addTo(map);
-
-  // Control de búsqueda simple (por nombre)
-  L.Control.geocoder({ defaultMarkGeocode: false })
-    .on('markgeocode', function(e) {
-      const bbox = e.geocode.bbox;
-      map.fitBounds(bbox);
+  <script>
+    // Crear mapa base
+    const map = L.map('map').setView([-1.5, -78.5], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap'
     }).addTo(map);
 
-  // Info panel
-  const info = L.control();
-  info.onAdd = function () {
-    const div = L.DomUtil.create('div', 'info');
-    div.innerHTML = '<h4>Acciones por provincia</h4>Haz clic en una provincia';
-    return div;
-  };
-  info.addTo(map);
+    // Cargar shapefile desde input
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
 
-  // Cargar GeoJSON y pintar
-  fetch(geojsonURL).then(r=>r.json()).then(data=>{
-    // dependiendo del GeoJSON, la propiedad con el nombre de la provincia puede variar.
-    // este ejemplo intenta usar 'NAME_1' o 'provincia' o 'name'.
-    function getProvinceName(feat) {
-      return feat.properties.NAME_1 || feat.properties.provincia || feat.properties.name || feat.properties.NOMBRE;
-    }
-
-    function style(feature) {
-      const name = getProvinceName(feature);
-      const d = provinciaData[name];
-      const score = d ? d.score : 0;
-      return {
-        fillColor: getColor(score),
-        weight: 1,
-        opacity: 1,
-        color: 'white',
-        dashArray: '3',
-        fillOpacity: 0.7
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const buffer = e.target.result;
+        shp(buffer).then(function(geojson) {
+          const layer = L.geoJSON(geojson, {
+            style: {
+              color: "#555",
+              weight: 1,
+              fillColor: "#BD0026",
+              fillOpacity: 0.5
+            },
+            onEachFeature: function(feature, layer) {
+              // Mostrar nombre de provincia (cambia según atributo)
+              const props = feature.properties;
+              const nombre = props.DPA_DESPRO || props.NAME_1 || "Provincia";
+              layer.bindPopup("<b>" + nombre + "</b>");
+            }
+          }).addTo(map);
+          map.fitBounds(layer.getBounds());
+        });
       };
-    }
-
-    function onEachFeature(feature, layer) {
-      const name = getProvinceName(feature);
-      const d = provinciaData[name];
-      const marcha = d && d.marcha ? 'Sí' : 'No reportado';
-      const paro = d && d.paro ? 'Sí' : 'No reportado';
-      const bloqueo = d && d.bloqueo ? 'Sí' : 'No reportado';
-      const planton = d && d.planton ? 'Sí' : 'No reportado';
-      const score = d ? d.score : 0;
-
-      layer.on({
-        mouseover: function(e) {
-          e.target.setStyle({weight:3, color:'#666', fillOpacity:0.9});
-        },
-        mouseout: function(e) {
-          geojson.resetStyle(e.target);
-        },
-        click: function(e) {
-          const html = `<b>${name}</b><br/>
-            Intensidad (0-4): ${score}<br/>
-            Marcha: ${marcha}<br/>
-            Paro/movilización: ${paro}<br/>
-            Bloqueo de vías: ${bloqueo}<br/>
-            Plantón / toma: ${planton}`;
-          info.getContainer().innerHTML = html;
-          map.fitBounds(e.target.getBounds(), {padding:[20,20]});
-        }
-      });
-      layer.bindTooltip(name, {sticky:true});
-    }
-
-    const geojson = L.geoJson(data, {style: style, onEachFeature: onEachFeature}).addTo(map);
-
-    // leyenda
-    const legend = L.control({position: 'bottomright'});
-    legend.onAdd = function (map) {
-      const div = L.DomUtil.create('div', 'legend');
-      const grades = [0,1,2,3,4];
-      let labels = ['<strong>Intensidad</strong><br>'];
-      for (let i = grades.length -1; i >=0; i--) {
-        const g = grades[i];
-        labels.push(
-          '<i style="background:' + getColor(g) + ';width:18px;height:12px;display:inline-block;margin-right:6px;"></i> ' +
-          g + (g === 4 ? ' (máx)' : '')
-        );
-      }
-      div.innerHTML = labels.join('<br>');
-      return div;
-    };
-    legend.addTo(map);
-  }).catch(err=>{
-    alert("No se pudo cargar el GeoJSON desde: " + geojsonURL + "\nRevisa la URL o usa un GeoJSON local.");
-    console.error(err);
-  });
-
-</script>
+      reader.readAsArrayBuffer(file);
+    });
+  </script>
 </body>
 </html>
