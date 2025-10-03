@@ -2,42 +2,90 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Mapa Leaflet con Shapefile Ecuador</title>
+  <title>Mapa Leaflet con Configuración de Capa</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Librería shp.js para leer shapefiles -->
+  <!-- shp.js para shapefiles -->
   <script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
 
   <style>
     body, html { margin:0; padding:0; height:100%; }
     #map { height: 100vh; width: 100%; }
     #fileInput {
-      position: absolute;
-      top: 10px; left: 10px;
-      z-index: 1000;
-      background: white; padding: 6px;
-      border-radius: 6px;
+      position: absolute; top: 10px; left: 10px; z-index: 1000;
+      background: white; padding: 6px; border-radius: 6px;
       box-shadow: 0 0 4px rgba(0,0,0,0.3);
     }
+    #configPanel {
+      position: absolute; top: 60px; left: 10px; z-index: 1000;
+      background: white; padding: 10px; border-radius: 6px;
+      width: 200px; box-shadow: 0 0 4px rgba(0,0,0,0.3);
+      font-size: 14px;
+    }
+    #configPanel label { display: block; margin-top: 6px; }
+    #configPanel input { width: 100%; }
   </style>
 </head>
 <body>
   <input type="file" id="fileInput" accept=".zip" />
+  <div id="configPanel" style="display:none;">
+    <h4>Configurar capa</h4>
+    <label>Color de relleno:
+      <input type="color" id="fillColor" value="#BD0026">
+    </label>
+    <label>Color de borde:
+      <input type="color" id="borderColor" value="#555555">
+    </label>
+    <label>Transparencia:
+      <input type="range" id="opacity" min="0" max="1" step="0.1" value="0.5">
+    </label>
+    <button id="resetStyle">Restablecer estilo</button>
+  </div>
   <div id="map"></div>
 
   <script>
-    // Crear mapa base
     const map = L.map('map').setView([-1.5, -78.5], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18,
-      attribution: '© OpenStreetMap'
+      maxZoom: 18, attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    // Cargar shapefile desde input
+    let currentLayer = null;
+    const defaultStyle = {
+      color: "#555",
+      weight: 1,
+      fillColor: "#BD0026",
+      fillOpacity: 0.5
+    };
+
+    // Función para aplicar estilo dinámico
+    function applyStyle() {
+      if (!currentLayer) return;
+      currentLayer.setStyle({
+        color: document.getElementById('borderColor').value,
+        weight: 1,
+        fillColor: document.getElementById('fillColor').value,
+        fillOpacity: parseFloat(document.getElementById('opacity').value)
+      });
+    }
+
+    // Evento input para sliders y color pickers
+    document.getElementById('fillColor').addEventListener('input', applyStyle);
+    document.getElementById('borderColor').addEventListener('input', applyStyle);
+    document.getElementById('opacity').addEventListener('input', applyStyle);
+
+    document.getElementById('resetStyle').addEventListener('click', () => {
+      if (!currentLayer) return;
+      currentLayer.setStyle(defaultStyle);
+      document.getElementById('fillColor').value = defaultStyle.fillColor;
+      document.getElementById('borderColor').value = defaultStyle.color;
+      document.getElementById('opacity').value = defaultStyle.fillOpacity;
+    });
+
+    // Cargar shapefile
     document.getElementById('fileInput').addEventListener('change', function(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -46,21 +94,19 @@
       reader.onload = function(e) {
         const buffer = e.target.result;
         shp(buffer).then(function(geojson) {
-          const layer = L.geoJSON(geojson, {
-            style: {
-              color: "#555",
-              weight: 1,
-              fillColor: "#BD0026",
-              fillOpacity: 0.5
-            },
+          if (currentLayer) map.removeLayer(currentLayer);
+
+          currentLayer = L.geoJSON(geojson, {
+            style: defaultStyle,
             onEachFeature: function(feature, layer) {
-              // Mostrar nombre de provincia (cambia según atributo)
               const props = feature.properties;
               const nombre = props.DPA_DESPRO || props.NAME_1 || "Provincia";
               layer.bindPopup("<b>" + nombre + "</b>");
             }
           }).addTo(map);
-          map.fitBounds(layer.getBounds());
+
+          map.fitBounds(currentLayer.getBounds());
+          document.getElementById('configPanel').style.display = "block";
         });
       };
       reader.readAsArrayBuffer(file);
