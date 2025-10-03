@@ -1,70 +1,218 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Mapa Leaflet con Configuración de Capa</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="utf-8" />
+  <title>Mapa Administrativo Ecuador — Estilo Futurista</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Fuente futurista -->
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- shp.js para shapefiles -->
+  <!-- shp.js -->
   <script src="https://unpkg.com/shpjs@latest/dist/shp.min.js"></script>
 
   <style>
-    body, html { margin:0; padding:0; height:100%; }
-    #map { height: 100vh; width: 100%; }
-    #fileInput {
-      position: absolute; top: 10px; left: 10px; z-index: 1000;
-      background: white; padding: 6px; border-radius: 6px;
-      box-shadow: 0 0 4px rgba(0,0,0,0.3);
+    /* ---------- Base ---------- */
+    :root{
+      --bg:#0b0f14;
+      --panel:#0f1720aa; /* glass */
+      --glass-border: rgba(255,255,255,0.05);
+      --neon-cyan: #00f0ff;
+      --neon-magenta: #ff2ec4;
+      --accent: var(--neon-cyan);
+      --muted: rgba(255,255,255,0.65);
+      --glass-blur: 8px;
     }
-    #configPanel {
-      position: absolute; top: 60px; left: 10px; z-index: 1000;
-      background: white; padding: 10px; border-radius: 6px;
-      width: 200px; box-shadow: 0 0 4px rgba(0,0,0,0.3);
+
+    html,body{ height:100%; margin:0; font-family: 'Orbitron', system-ui, sans-serif; background: linear-gradient(180deg, #020305 0%, #07111a 60%); color: #e6f7ff; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+    #map{ position: absolute; inset:0; z-index:0; }
+
+    /* make leaflet base tiles slightly darker using overlay */
+    .leaflet-container { background: radial-gradient(ellipse at center, rgba(0,0,0,0.12), rgba(0,0,0,0.6)); }
+
+    /* ---------- Futuristic panels ---------- */
+    .panel {
+      position: absolute;
+      left: 18px;
+      z-index: 1000;
+      background: linear-gradient(135deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      border: 1px solid var(--glass-border);
+      box-shadow: 0 6px 30px rgba(0,0,0,0.7), 0 0 18px rgba(0,0,0,0.5) inset;
+      backdrop-filter: blur(var(--glass-blur));
+      -webkit-backdrop-filter: blur(var(--glass-blur));
+      border-radius: 12px;
+      padding: 10px;
+      color: var(--muted);
+      min-width: 220px;
+    }
+
+    #controls { top: 14px; }
+    #configPanel { top: 96px; width: 260px; }
+
+    .panel h4 {
+      margin: 0 0 8px 0;
+      color: #e9fbff;
       font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display:flex; align-items:center; gap:8px;
     }
-    #configPanel label { display: block; margin-top: 6px; }
-    #configPanel input { width: 100%; }
+
+    /* file input style */
+    .file-row { display:flex; gap:8px; align-items:center; }
+    .file-row label {
+      display:inline-block; padding:8px 10px; border-radius:8px;
+      background: linear-gradient(90deg, rgba(0,240,255,0.06), rgba(255,46,196,0.03));
+      border: 1px solid rgba(255,255,255,0.03);
+      cursor:pointer; color:var(--neon-cyan); font-size:13px;
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .file-row label:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,240,255,0.06); }
+
+    input[type=file] { display:none; }
+
+    /* Layer selector & form elements */
+    select, input[type="color"], input[type="range"], button {
+      width: 100%; margin-top:6px;
+      border-radius:8px; padding:8px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
+      border: 1px solid rgba(255,255,255,0.04); color: #e6fbff;
+      font-family: 'Orbitron', monospace; font-size:13px;
+      outline: none;
+    }
+    select { appearance:none; padding-right: 28px; }
+    input[type="color"] { height:38px; padding:2px; border-radius:8px; }
+
+    input[type="range"] {
+      -webkit-appearance: none; height: 6px; background: linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      margin-top: 6px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
+      background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta));
+      box-shadow: 0 0 12px rgba(0,240,255,0.14), 0 2px 8px rgba(0,0,0,0.6);
+    }
+
+    button {
+      margin-top:10px; cursor:pointer; color: white;
+      background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta));
+      border: none; box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+      transition: transform .12s ease;
+    }
+    button:hover { transform: translateY(-3px); }
+
+    /* Leaflet control customization (topright layer control) */
+    .leaflet-top.leaflet-right { right: 18px; top: 18px; }
+    .leaflet-control-layers {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.06));
+      border-radius: 10px; border: 1px solid rgba(255,255,255,0.03);
+      color: var(--muted); font-family: 'Orbitron', monospace; font-size:13px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+      backdrop-filter: blur(6px);
+    }
+    .leaflet-control-layers .leaflet-control-layers-list label { color: var(--muted); }
+
+    /* Popup style */
+    .leaflet-popup-content-wrapper {
+      background: linear-gradient(180deg, rgba(5,20,30,0.88), rgba(3,10,18,0.92));
+      border-radius: 8px; border: 1px solid rgba(255,255,255,0.03);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+      color: #d8fbff; font-family: 'Orbitron', monospace; font-size:13px;
+    }
+    .leaflet-popup-tip { background: rgba(3,10,18,0.92); }
+
+    /* Small labels & tooltip */
+    .legend-mini {
+      display:flex; gap:8px; align-items:center; font-size:12px; color:var(--muted);
+    }
+
+    /* Neon border around map on load */
+    #map::after {
+      content: "";
+      pointer-events: none;
+      position: absolute; inset: 8px; border-radius: 12px;
+      box-shadow: 0 0 30px rgba(0,240,255,0.06), inset 0 0 40px rgba(255,46,196,0.02);
+      z-index: 9999;
+    }
+
+    /* Responsive tweaks */
+    @media (max-width:600px){
+      .panel { left:10px; right:10px; width:auto; }
+      #configPanel { top: calc(14px + 72px); width: calc(100% - 20px); }
+    }
   </style>
 </head>
 <body>
-  <input type="file" id="fileInput" accept=".zip" />
-  <div id="configPanel" style="display:none;">
-    <h4>Configurar capa</h4>
+  <!-- Controls panel -->
+  <div id="controls" class="panel">
+    <div class="file-row">
+      <label for="fileInput" title="Cargar shapefile .zip (contiene shp, shx, dbf, prj)">➕ Cargar SHP</label>
+      <input type="file" id="fileInput" accept=".zip">
+    </div>
+    <div style="height:8px"></div>
+    <div class="legend-mini">
+      <svg width="14" height="14"><rect width="14" height="14" rx="3" style="fill:#00f0ff; opacity:0.8;"/></svg> <span>Provincias</span>
+      <svg width="14" height="14" style="margin-left:8px;"><rect width="14" height="14" rx="3" style="fill:#3182bd; opacity:0.8;"/></svg> <span style="opacity:0.7">Cantones</span>
+    </div>
+  </div>
+
+  <!-- Configuration panel -->
+  <div id="configPanel" class="panel" style="display:none;">
+    <h4>Configurar Capa</h4>
+
+    <label>Elegir capa:
+      <select id="layerSelect">
+        <option value="provincias">Provincias</option>
+        <option value="cantones">Cantones</option>
+      </select>
+    </label>
+
     <label>Color de relleno:
       <input type="color" id="fillColor" value="#BD0026">
     </label>
+
     <label>Color de borde:
-      <input type="color" id="borderColor" value="#555555">
+      <input type="color" id="borderColor" value="#00f0ff">
     </label>
+
     <label>Transparencia:
-      <input type="range" id="opacity" min="0" max="1" step="0.1" value="0.5">
+      <input type="range" id="opacity" min="0" max="1" step="0.05" value="0.55">
     </label>
+
     <button id="resetStyle">Restablecer estilo</button>
   </div>
+
   <div id="map"></div>
 
   <script>
-    const map = L.map('map').setView([-1.5, -78.5], 6);
+    // ---------- Mapa ----------
+    const map = L.map('map', { zoomControl: true }).setView([-1.5, -78.5], 6);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18, attribution: '© OpenStreetMap'
+      maxZoom: 18, attribution: ''
     }).addTo(map);
 
-    let currentLayer = null;
+    // Variables de capas
+    let provinciasLayer = null;
+    let cantonesLayer = null;
+
     const defaultStyle = {
-      color: "#555",
+      color: "#00f0ff",     // border neon cyan
       weight: 1,
-      fillColor: "#BD0026",
-      fillOpacity: 0.5
+      fillColor: "#BD0026", // default fill
+      fillOpacity: 0.55
     };
 
-    // Función para aplicar estilo dinámico
-    function applyStyle() {
-      if (!currentLayer) return;
-      currentLayer.setStyle({
+    const overlayMaps = {};
+    const layerControl = L.control.layers(null, overlayMaps, { collapsed: false }).addTo(map);
+
+    // Función que aplica estilo a la capa seleccionada
+    function applyStyleTo(targetLayer) {
+      if (!targetLayer) return;
+      targetLayer.setStyle({
         color: document.getElementById('borderColor').value,
         weight: 1,
         fillColor: document.getElementById('fillColor').value,
@@ -72,45 +220,170 @@
       });
     }
 
-    // Evento input para sliders y color pickers
-    document.getElementById('fillColor').addEventListener('input', applyStyle);
-    document.getElementById('borderColor').addEventListener('input', applyStyle);
-    document.getElementById('opacity').addEventListener('input', applyStyle);
+    // Acciones sobre inputs de estilo
+    document.getElementById('fillColor').addEventListener('input', () => {
+      const targetName = document.getElementById('layerSelect').value;
+      const target = (targetName === 'provincias') ? provinciasLayer : cantonesLayer;
+      applyStyleTo(target);
+    });
+    document.getElementById('borderColor').addEventListener('input', () => {
+      const targetName = document.getElementById('layerSelect').value;
+      const target = (targetName === 'provincias') ? provinciasLayer : cantonesLayer;
+      applyStyleTo(target);
+    });
+    document.getElementById('opacity').addEventListener('input', () => {
+      const targetName = document.getElementById('layerSelect').value;
+      const target = (targetName === 'provincias') ? provinciasLayer : cantonesLayer;
+      applyStyleTo(target);
+    });
 
     document.getElementById('resetStyle').addEventListener('click', () => {
-      if (!currentLayer) return;
-      currentLayer.setStyle(defaultStyle);
+      const targetName = document.getElementById('layerSelect').value;
+      const target = (targetName === 'provincias') ? provinciasLayer : cantonesLayer;
+      if (!target) return;
+      target.setStyle(defaultStyle);
       document.getElementById('fillColor').value = defaultStyle.fillColor;
       document.getElementById('borderColor').value = defaultStyle.color;
       document.getElementById('opacity').value = defaultStyle.fillOpacity;
     });
 
-    // Cargar shapefile
+    // Cargar shapefile ZIP (un solo archivo que contiene tanto provincias como cantones)
     document.getElementById('fileInput').addEventListener('change', function(e) {
       const file = e.target.files[0];
       if (!file) return;
-
       const reader = new FileReader();
-      reader.onload = function(e) {
-        const buffer = e.target.result;
-        shp(buffer).then(function(geojson) {
-          if (currentLayer) map.removeLayer(currentLayer);
+      reader.onload = function(ev) {
+        shp(ev.target.result).then(function(geojson) {
+          // Detectar qué campo podría indicar nivel administrativo.
+          // Intenta varios nombres comunes, pero lo ideal es ajustar al atributo real.
+          const sampleProps = geojson.features && geojson.features.length ? geojson.features[0].properties : {};
+          const keys = Object.keys(sampleProps);
+          // consola de desarrollo por si quieres inspeccionar los atributos (se puede comentar)
+          console.log("Atributos detectados:", keys);
 
-          currentLayer = L.geoJSON(geojson, {
+          // Heurística: si existe campo 'DPA_TIPO' o 'NIVEL' u 'admin_level' o 'TIPO' lo usamos
+          const tipoField = keys.find(k => /DPA_TIPO|NIVEL|TIPO|TIPO_ADM|admin_level/i.test(k)) || null;
+          const provNameField = keys.find(k => /DPA_DESPRO|NAME_1|NOMBRE|PROVINCIA/i.test(k)) || null;
+          const cantonNameField = keys.find(k => /DPA_DESCAN|NAME_2|CANTON|CANTÓN|DESCAN/i.test(k)) || null;
+
+          // Si no hay campo tipo, intentaremos separar por nivel: si hay 'admin_level' numérico
+          const adminLevelField = keys.find(k => /admin_level|nivel/i.test(k)) || null;
+
+          // Filtros: ajusta los valores esperados según tu shapefile
+          function isProvincia(f){
+            if (tipoField) {
+              const v = String(f.properties[tipoField]).toLowerCase();
+              return v.includes("prov") || v.includes("provincia") || v.includes("province");
+            }
+            if (adminLevelField) {
+              const lv = String(f.properties[adminLevelField]);
+              return lv === "1" || lv === "2" ? (lv === "1") : false;
+            }
+            // fallback: si el nombre de provincia existe y canton no, suponer provincia
+            return !!(f.properties[provNameField] && !f.properties[cantonNameField]);
+          }
+
+          function isCanton(f){
+            if (tipoField) {
+              const v = String(f.properties[tipoField]).toLowerCase();
+              return v.includes("cant") || v.includes("cantón") || v.includes("canton");
+            }
+            if (adminLevelField) {
+              const lv = String(f.properties[adminLevelField]);
+              return lv === "2" || lv === "3" ? (lv === "2" || lv === "3") : false;
+            }
+            return !!(f.properties[cantonNameField]);
+          }
+
+          // Construir geojson filtrado (evitamos mutar el original)
+          const provFeatures = geojson.features.filter(f => isProvincia(f));
+          const cantFeatures = geojson.features.filter(f => isCanton(f));
+
+          // Si no encontramos ninguno por heurística, intentar separar por geometría simple:
+          // fallback: si todo es polígonos, crear capas por una propiedad "TYPE" u otra; si no, ambos vacíos
+          if (provFeatures.length === 0 && cantFeatures.length === 0) {
+            // intentar por nombre: si la propiedad contiene 'Provincia' en su valor
+            const posiblesProv = geojson.features.filter(f => {
+              return Object.values(f.properties).some(v => typeof v === 'string' && v.toLowerCase().includes('provincia'));
+            });
+            if (posiblesProv.length > 0) provFeatures.push(...posiblesProv);
+          }
+
+          // Crear layers Leaflet
+          if (provinciasLayer) { map.removeLayer(provinciasLayer); layerControl.removeLayer(provinciasLayer); provinciasLayer = null; }
+          if (cantonesLayer) { map.removeLayer(cantonesLayer); layerControl.removeLayer(cantonesLayer); cantonesLayer = null; }
+
+          provinciasLayer = L.geoJSON({type:"FeatureCollection", features:provFeatures}, {
             style: defaultStyle,
             onEachFeature: function(feature, layer) {
               const props = feature.properties;
-              const nombre = props.DPA_DESPRO || props.NAME_1 || "Provincia";
-              layer.bindPopup("<b>" + nombre + "</b>");
+              const nombre = props[provNameField] || props.NOMBRE || props.NAME_1 || props.DPA_DESPRO || "Provincia";
+              layer.bindPopup(`<div style="font-family: 'Orbitron';"><strong>Provincia:</strong><br>${nombre}</div>`);
             }
-          }).addTo(map);
+          });
 
-          map.fitBounds(currentLayer.getBounds());
+          cantonesLayer = L.geoJSON({type:"FeatureCollection", features:cantFeatures}, {
+            style: Object.assign({}, defaultStyle, { fillColor: "#3182bd" }),
+            onEachFeature: function(feature, layer) {
+              const props = feature.properties;
+              const nombre = props[cantonNameField] || props.NAME_2 || props.DPA_DESCAN || "Cantón";
+              layer.bindPopup(`<div style="font-family: 'Orbitron';"><strong>Cantón:</strong><br>${nombre}</div>`);
+            }
+          });
+
+          // Añadir al control de capas
+          overlayMaps["Provincias"] = provinciasLayer;
+          overlayMaps["Cantones"] = cantonesLayer;
+          try {
+            layerControl.addOverlay(provinciasLayer, "Provincias");
+            layerControl.addOverlay(cantonesLayer, "Cantones");
+          } catch(e) {
+            console.warn("Error agregando overlays al control:", e);
+          }
+
+          // Añadir al mapa por defecto si hay datos
+          if (provFeatures.length) { provinciasLayer.addTo(map); map.fitBounds(provinciasLayer.getBounds()); }
+          else if (cantFeatures.length) { cantonesLayer.addTo(map); map.fitBounds(cantonesLayer.getBounds()); }
+          else { alert("No se detectaron provincias ni cantones con la heurística automática. Revisa los atributos del shapefile en la consola (F12)."); }
+
+          // Mostrar panel de configuración
           document.getElementById('configPanel').style.display = "block";
+        }).catch(err => {
+          console.error("Error leyendo shapefile:", err);
+          alert("Error al leer el shapefile. Asegúrate que el .zip contenga .shp, .shx, .dbf y .prj y que no esté corrupto.");
         });
       };
       reader.readAsArrayBuffer(file);
     });
+
+    // Ajuste: si el usuario cambia la selección de capa, actualizamos inputs con el estilo actual
+    document.getElementById('layerSelect').addEventListener('change', () => {
+      const sel = document.getElementById('layerSelect').value;
+      const target = (sel === 'provincias') ? provinciasLayer : cantonesLayer;
+      if (!target) return;
+      // tomamos el style del primer feature si existe
+      try {
+        const oneLayer = Object.values(target._layers)[0];
+        if (oneLayer) {
+          const s = oneLayer.options;
+          document.getElementById('fillColor').value = rgbToHex(s.fillColor || s.fill || "#BD0026");
+          document.getElementById('borderColor').value = rgbToHex(s.color || "#00f0ff");
+          document.getElementById('opacity').value = (typeof s.fillOpacity !== 'undefined') ? s.fillOpacity : 0.55;
+        }
+      } catch(e) { /* ignore */ }
+    });
+
+    // Helper: convertir rgb() a hex, si es necesario
+    function rgbToHex(color) {
+      if (!color) return "#ffffff";
+      if (color.startsWith("#")) return color;
+      const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (!m) return "#ffffff";
+      const r = parseInt(m[1]).toString(16).padStart(2,'0');
+      const g = parseInt(m[2]).toString(16).padStart(2,'0');
+      const b = parseInt(m[3]).toString(16).padStart(2,'0');
+      return `#${r}${g}${b}`;
+    }
   </script>
 </body>
 </html>
