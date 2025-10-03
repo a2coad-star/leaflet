@@ -1,230 +1,149 @@
-<!DOCTYPE html>
-<html lang="es">
+<!doctype html>
+<html>
 <head>
-<meta charset="UTF-8">
-<title>Vías con paro - ECU 911</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-
-<!-- Leaflet CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-<style>
-body { font-family: Arial, sans-serif; margin: 20px; background: #f4f6f9; color: #333; }
-h2 { text-align: center; color: #004085; margin-bottom: 10px; }
-#fecha { text-align: center; margin-bottom: 20px; color: #6c757d; }
-
-#mapa {
-  height: 80vh;
-  width: 100%;
-  border-radius: 8px;
-  margin-bottom: 20px;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: white;
-  border-radius: 8px;
-  overflow: hidden;
-}
-thead { background-color: #007bff; color: white; }
-th, td { border: 1px solid #ddd; padding: 6px; text-align: left; word-break: break-word; }
-tr:nth-child(even) { background-color: #f2f2f2; }
-tr:hover { background-color: #e9ecef; }
-
-.estado-cerrada { color: #b02a37; font-weight: bold; }
-.estado-parcial { color: #fd7e14; font-weight: bold; }
-.estado-restriccion { color: #198754; font-weight: bold; }
-
-.info.legend {
-  background: white;
-  padding: 8px 12px;
-  border-radius: 8px;
-  line-height: 1.5em;
-  box-shadow: 0 0 10px rgba(0,0,0,0.2);
-  font-size: 14px;
-  color: #333;
-}
-.info.legend p { margin: 0; }
-</style>
+  <meta charset="utf-8">
+  <title>Mapa — Acciones paro CONAIE por provincia (Ecuador)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    body, html { height: 100%; margin: 0; }
+    #map { height: 100vh; width: 100%; }
+    .info { padding: 6px 8px; background: white; background: rgba(255,255,255,0.9); box-shadow: 0 0 15px rgba(0,0,0,0.2); border-radius: 5px; }
+    .legend { line-height: 18px; color: #555; background: white; padding:6px; border-radius:5px;}
+  </style>
 </head>
 <body>
+<div id="map"></div>
 
-<h2>Vías con paro o manifestaciones en Ecuador</h2>
-<h3 id="fecha"></h3>
-
-<div id="mapa"></div>
-
-<div class="tabla-container">
-  <table id="tablaVias">
-    <thead>
-      <tr>
-        <th>Provincia</th>
-        <th>Vía</th>
-        <th>Estado</th>
-        <th>Observaciones</th>
-      </tr>
-    </thead>
-    <tbody id="tbodyVias">
-      <tr><td colspan="4" style="text-align:center;">Cargando datos...</td></tr>
-    </tbody>
-  </table>
-</div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-control-geocoder/2.4.0/Control.Geocoder.min.js"></script>
 
 <script>
-let todasLasVias = [];
+  // --- 1) Datos de resumen por provincia (ajusta si quieres) ---
+  const provinciaData = {
+    "Imbabura": { marcha: true, paro: true, bloqueo: true, planton: true, score: 4 },
+    "Pichincha": { marcha: true, paro: true, bloqueo: true, planton: true, score: 4 },
+    "Bolívar": { marcha: true, paro: true, bloqueo: true, planton: true, score: 4 },
+    "Cañar": { marcha: true, paro: true, bloqueo: true, planton: true, score: 4 },
+    "Chimborazo": { marcha: true, paro: true, bloqueo: true, planton: true, score: 4 },
+    "Cotopaxi": { marcha: true, paro: true, bloqueo: false, planton: true, score: 3 },
+    "Carchi": { marcha: true, paro: true, bloqueo: false, planton: true, score: 3 },
+    "Guayas": { marcha: false, paro: true, bloqueo: true, planton: false, score: 2 },
+    "Azuay": { marcha: false, paro: true, bloqueo: true, planton: false, score: 2 }
+    // Agrega/edita provincias según necesites.
+  };
 
-const provinciasMapa = {
-"AZUAY":[-3.005927,-79.245029],
-"BOLIVAR":[-1.605175,-79.121330],
-"CAÑAR":[-2.515825,-79.022370],
-"CARCHI":[0.825669,-78.171566],
-"CHIMBORAZO":[-1.869608,-78.727050],
-"COTOPAXI":[-0.806102,-78.883736],
-"EL ORO":[-3.461413,-79.908998],
-"ESMERALDAS":[0.759851,-79.224666],
-"GALAPAGOS":[-0.669132,-91.047688],
-"GUAYAS":[-1.945893,-79.907887],
-"IMBABURA":[0.424626,-78.312170],
-"LOJA":[-4.057974,-79.783680],
-"LOS RIOS":[-1.321230,-79.585354],
-"MANABI":[-0.815067,-80.164674],
-"MORONA SANTIAGO":[-2.484426,-77.873491],
-"NAPO":[-0.653289,-77.910025],
-"ORELLANA":[-0.762881,-76.396488],
-"PASTAZA":[-1.670789,-76.970588],
-"PICHINCHA":[-0.094860,-78.614603],
-"SANTA ELENA":[-2.187185,-80.623954],
-"SANTO DOMINGO DE LOS TSACHILAS":[-0.267089,-79.178265],
-"SUCUMBIOS":[-0.016574,-76.547842],
-"TUNGURAHUA":[-1.269052,-78.473687],
-"ZAMORA CHINCHIPE":[-4.094416,-78.917310]
-};
+  // --- 2) URL al GeoJSON de provincias de Ecuador ---
+  // Puedes reemplazar por tu propio GeoJSON (raw github, simplemaps, humdata, etc.)
+  const geojsonURL = "https://raw.githubusercontent.com/pabl-o-ce/Ecuador-geoJSON/master/geojson/provincias.geojson";
 
-function normalizarNombre(nombre){
-  return nombre.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
-}
-
-document.addEventListener('DOMContentLoaded', function(){
-  document.getElementById('fecha').innerText = "Última actualización: " + (new Date()).toLocaleString('es-EC');
-
-  const serviceUrl = 'https://ecu911.gob.ec/Services/WSVias/ViasWeb.php?estado=A&and:<>:EstadoActual-id=593&order=Provincia-descripcion&limit=200&start=0';
-
-  fetch(serviceUrl)
-    .then(res => res.json())
-    .then(data => {
-      todasLasVias = data?.data || data?.resultado || [];
-      renderMapaViasConParo();
-      renderTablaVias();
-    })
-    .catch(err=>{
-      console.error('Error al cargar JSON online:', err);
-      document.getElementById('tbodyVias').innerHTML = '<tr><td colspan="4" style="text-align:center;color:red;">Error al cargar los datos</td></tr>';
-    });
-});
-
-let mapa=null, legend=null;
-
-function renderMapaViasConParo(){
-  if(!mapa){
-    mapa=L.map('mapa').setView([-1.8312,-78.1834],6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18, attribution:'© OpenStreetMap'}).addTo(mapa);
+  // --- 3) util: color según score ---
+  function getColor(score) {
+    return score >= 4 ? '#800026' :
+           score === 3 ? '#BD0026' :
+           score === 2 ? '#E31A1C' :
+           score === 1 ? '#FC4E2A' :
+                         '#FFEDA0';
   }
 
-  mapa.eachLayer(layer=>{
-    if(layer instanceof L.CircleMarker) mapa.removeLayer(layer);
-  });
+  // --- 4) Crear mapa ---
+  const map = L.map('map').setView([-1.5, -79.0], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18, attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
 
-  const palabrasClave = ["paro","manifestantes","manifestaciones"];
-  let viasFiltradas = todasLasVias.filter(v=>{
-    let obs = (v.observaciones||"").toLowerCase();
-    return palabrasClave.some(p=>obs.includes(p));
-  });
+  // Control de búsqueda simple (por nombre)
+  L.Control.geocoder({ defaultMarkGeocode: false })
+    .on('markgeocode', function(e) {
+      const bbox = e.geocode.bbox;
+      map.fitBounds(bbox);
+    }).addTo(map);
 
-  // Agrupar por provincia
-  const agrupado = {};
-  viasFiltradas.forEach(v=>{
-    const prov = v.Provincia?.descripcion || "N/A";
-    const estado = v.EstadoActual?.nombre?.toUpperCase() || "N/A";
-    if(!agrupado[prov]) agrupado[prov]={};
-    if(!agrupado[prov][estado]) agrupado[prov][estado]=[];
-    agrupado[prov][estado].push(v.descripcion);
-  });
-
-  for(const prov in agrupado){
-    const coords = provinciasMapa[normalizarNombre(prov)];
-    if(!coords) continue;
-
-    let totalVias = 0;
-    let popupContent = `<strong>Provincia:</strong> ${prov}<br>`;
-    for(const estado in agrupado[prov]){
-      const vias = agrupado[prov][estado];
-      totalVias += vias.length;
-      popupContent += `<strong>${estado}:</strong> ${vias.join(', ')}<br>`;
-    }
-
-    // Color según estado más severo
-    let color="blue", fill="#3399ff";
-    if(agrupado[prov]["CERRADA"]){ color="red"; fill="#b02a37"; }
-    else if(agrupado[prov]["PARCIALMENTE HABILITADA"]){ color="orange"; fill="#fd7e14"; }
-    else if(agrupado[prov]["HABILITADA CON RESTRICCIÓN VEHICULAR"]){ color="green"; fill="#198754"; }
-
-    L.circleMarker(coords,{
-      radius: 8 + Math.min(totalVias, 15),
-      color: color,
-      fillColor: fill,
-      fillOpacity:0.7
-    }).addTo(mapa)
-      .bindPopup(popupContent);
-  }
-
-  // Leyenda simple
-  if(legend){ legend.remove(); }
-  legend = L.control({position:'bottomright'});
-  legend.onAdd = function(map){
-    let div = L.DomUtil.create('div','info legend');
-    div.innerHTML = `<p><span style="color:red;">●</span> Cerrada</p>
-                     <p><span style="color:orange;">●</span> Parcialmente Habilitada</p>
-                     <p><span style="color:green;">●</span> Habilitada con Restricción Vehicular</p>`;
+  // Info panel
+  const info = L.control();
+  info.onAdd = function () {
+    const div = L.DomUtil.create('div', 'info');
+    div.innerHTML = '<h4>Acciones por provincia</h4>Haz clic en una provincia';
     return div;
   };
-  legend.addTo(mapa);
-}
+  info.addTo(map);
 
-function renderTablaVias(){
-  const palabrasClave = ["paro","manifestantes","manifestaciones"];
-  let viasFiltradas = todasLasVias.filter(v=>{
-    let obs = (v.observaciones||"").toLowerCase();
-    return palabrasClave.some(p=>obs.includes(p));
+  // Cargar GeoJSON y pintar
+  fetch(geojsonURL).then(r=>r.json()).then(data=>{
+    // dependiendo del GeoJSON, la propiedad con el nombre de la provincia puede variar.
+    // este ejemplo intenta usar 'NAME_1' o 'provincia' o 'name'.
+    function getProvinceName(feat) {
+      return feat.properties.NAME_1 || feat.properties.provincia || feat.properties.name || feat.properties.NOMBRE;
+    }
+
+    function style(feature) {
+      const name = getProvinceName(feature);
+      const d = provinciaData[name];
+      const score = d ? d.score : 0;
+      return {
+        fillColor: getColor(score),
+        weight: 1,
+        opacity: 1,
+        color: 'white',
+        dashArray: '3',
+        fillOpacity: 0.7
+      };
+    }
+
+    function onEachFeature(feature, layer) {
+      const name = getProvinceName(feature);
+      const d = provinciaData[name];
+      const marcha = d && d.marcha ? 'Sí' : 'No reportado';
+      const paro = d && d.paro ? 'Sí' : 'No reportado';
+      const bloqueo = d && d.bloqueo ? 'Sí' : 'No reportado';
+      const planton = d && d.planton ? 'Sí' : 'No reportado';
+      const score = d ? d.score : 0;
+
+      layer.on({
+        mouseover: function(e) {
+          e.target.setStyle({weight:3, color:'#666', fillOpacity:0.9});
+        },
+        mouseout: function(e) {
+          geojson.resetStyle(e.target);
+        },
+        click: function(e) {
+          const html = `<b>${name}</b><br/>
+            Intensidad (0-4): ${score}<br/>
+            Marcha: ${marcha}<br/>
+            Paro/movilización: ${paro}<br/>
+            Bloqueo de vías: ${bloqueo}<br/>
+            Plantón / toma: ${planton}`;
+          info.getContainer().innerHTML = html;
+          map.fitBounds(e.target.getBounds(), {padding:[20,20]});
+        }
+      });
+      layer.bindTooltip(name, {sticky:true});
+    }
+
+    const geojson = L.geoJson(data, {style: style, onEachFeature: onEachFeature}).addTo(map);
+
+    // leyenda
+    const legend = L.control({position: 'bottomright'});
+    legend.onAdd = function (map) {
+      const div = L.DomUtil.create('div', 'legend');
+      const grades = [0,1,2,3,4];
+      let labels = ['<strong>Intensidad</strong><br>'];
+      for (let i = grades.length -1; i >=0; i--) {
+        const g = grades[i];
+        labels.push(
+          '<i style="background:' + getColor(g) + ';width:18px;height:12px;display:inline-block;margin-right:6px;"></i> ' +
+          g + (g === 4 ? ' (máx)' : '')
+        );
+      }
+      div.innerHTML = labels.join('<br>');
+      return div;
+    };
+    legend.addTo(map);
+  }).catch(err=>{
+    alert("No se pudo cargar el GeoJSON desde: " + geojsonURL + "\nRevisa la URL o usa un GeoJSON local.");
+    console.error(err);
   });
 
-  let filas = '';
-  if(viasFiltradas.length===0){
-    filas='<tr><td colspan="4" style="text-align:center;">No existen vías con paro o manifestación</td></tr>';
-  } else {
-    viasFiltradas.forEach(obj=>{
-      let provincia=obj.Provincia?.descripcion||'N/A';
-      let via=obj.descripcion||'N/A';
-      let estado=obj.EstadoActual?.nombre||'N/A';
-      let observaciones=obj.observaciones||'Sin observaciones';
-
-      let clase='';
-      if(estado.toUpperCase()==="CERRADA") clase='estado-cerrada';
-      else if(estado.toUpperCase()==="PARCIALMENTE HABILITADA") clase='estado-parcial';
-      else if(estado.toUpperCase()==="HABILITADA CON RESTRICCIÓN VEHICULAR") clase='estado-restriccion';
-
-      filas+=`<tr>
-        <td>${provincia}</td>
-        <td>${via}</td>
-        <td class="${clase}">${estado}</td>
-        <td>${observaciones}</td>
-      </tr>`;
-    });
-  }
-  document.getElementById('tbodyVias').innerHTML = filas;
-}
 </script>
-
 </body>
 </html>
